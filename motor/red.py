@@ -102,3 +102,36 @@ class Red:
                 break
                 
         return resultado
+            # -----------------------------------------------------------
+    # R4. Próximo bus
+    # -----------------------------------------------------------
+    def proximo_bus(self, estacion, ruta, hora):
+        """Hora 'HH:MM' del siguiente bus (a esa hora o después), o None."""
+        estacion = limpiar(estacion)
+        paradas = self.rutas.obtener(ruta)
+        if paradas is None or not esta_en(paradas, estacion):
+            return None
+        if not self._esta_abierta(estacion):
+            return None
+        horas = self.horarios.obtener(ruta + "|" + estacion)
+        if horas is None:
+            return None
+        i = buscar_desde(horas, hora_bonita(hora))
+        if i == len(horas):
+            return None  # ya no pasan más buses hoy
+        return horas[i]
+
+    # -----------------------------------------------------------
+    # R6. Ranking de estaciones con más buses
+    # -----------------------------------------------------------
+    def ranking(self, k):
+        """Las k estaciones abiertas con más buses al día: [(nombre, buses)]."""
+        # Solo se vuelve a ordenar si algo cambió desde la última vez.
+        if self.ranking_guardado is None:
+            lista = []
+            for nombre, buses in self.buses.pares():
+                if self._esta_abierta(nombre):
+                    lista.append((nombre, buses))
+            self.ranking_guardado = ordenar(lista, primero_en_ranking)
+        return self.ranking_guardado[:k]
+
