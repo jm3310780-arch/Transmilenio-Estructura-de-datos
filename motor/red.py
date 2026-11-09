@@ -171,3 +171,57 @@ class Red:
                     lista.append((nombre, buses))
             self.ranking_guardado = ordenar(lista, primero_en_ranking)
         return self.ranking_guardado[:k]
+        # -----------------------------------------------------------
+    # R5. Planear un viaje (directo o con un transbordo)
+    # -----------------------------------------------------------
+    def viaje(self, origen, destino):
+        """Lista de tramos (ruta, sube_en, baja_en, paradas).
+
+        [] si origen y destino son la misma estación, None si no hay viaje.
+        """
+        origen = limpiar(origen)
+        destino = limpiar(destino)
+        if not self._esta_abierta(origen) or not self._esta_abierta(destino):
+            return None
+        if origen == destino:
+            return []
+
+        mejor = None
+        mejor_total = 0
+
+        # Paso 1: desde el origen, avanzar por cada ruta que pasa por ahí.
+        alcanzadas = TablaHash()
+        for ruta in self.rutas_de.obtener(origen):
+            paradas = self.rutas.obtener(ruta)
+            i = posicion_de(paradas, origen)
+            for j in range(i + 1, len(paradas)):
+                estacion = paradas[j]
+                cuantas = j - i
+                if estacion == destino:
+                    if mejor is None or cuantas < mejor_total:
+                        mejor = [(ruta, origen, destino, cuantas)]
+                        mejor_total = cuantas
+                    break
+                antes = alcanzadas.obtener(estacion)
+                if antes is None or cuantas < antes[0]:
+                    alcanzadas.poner(estacion, (cuantas, ruta))
+
+        # Paso 2: desde el destino, retroceder por cada ruta que llega ahí.
+        for ruta in self.rutas_de.obtener(destino):
+            paradas = self.rutas.obtener(ruta)
+            s = posicion_de(paradas, destino)
+            for q in range(s - 1, -1, -1):
+                cambio = paradas[q]
+                if cambio == origen:
+                    break
+                llegada = alcanzadas.obtener(cambio)
+                if llegada is None or llegada[1] == ruta:
+                    continue
+                if not self._esta_abierta(cambio):
+                    continue
+                total = llegada[0] + (s - q)
+                if mejor is None or total < mejor_total:
+                    mejor = [(llegada[1], origen, cambio, llegada[0]),
+                             (ruta, cambio, destino, s - q)]
+                    mejor_total = total
+        return mejor
