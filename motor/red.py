@@ -42,6 +42,23 @@ def posicion_de(lista, valor):
     return -1
 
 
+def insertar_en(lista, posicion, valor):
+    """Mete valor en la posición, corriendo los demás a la derecha."""
+    lista.append(None)
+    i = len(lista) - 1
+    while i > posicion:
+        lista[i] = lista[i - 1]
+        i -= 1
+    lista[posicion] = valor
+
+
+def borrar_en(lista, posicion):
+    """Saca el elemento de la posición, corriendo los demás a la izquierda."""
+    for i in range(posicion, len(lista) - 1):
+        lista[i] = lista[i + 1]
+    lista.pop()
+
+
 def primero_por_orden(a, b):
     return a[0] < b[0]
 
@@ -144,7 +161,7 @@ class Red:
             i += 1
         return resultado
 
-    # R4. Próximo bus (Parte de Santiago Wagner)
+    # R4. Próximo bus (Santiago Wagner)
     def proximo_bus(self, estacion, ruta, hora):
         """Hora 'HH:MM' del siguiente bus (a esa hora o después), o None."""
         estacion = limpiar(estacion)
@@ -161,7 +178,7 @@ class Red:
             return None
         return horas[i]
 
-    # R6. Ranking de estaciones con más buses (Parte de Santiago Wagner)
+    # R6. Ranking de estaciones con más buses (Santiago Wagner)
     def ranking(self, k):
         """Las k estaciones abiertas con más buses al día: [(nombre, buses)]."""
         if self.ranking_guardado is None:
@@ -171,14 +188,10 @@ class Red:
                     lista.append((nombre, buses))
             self.ranking_guardado = ordenar(lista, primero_en_ranking)
         return self.ranking_guardado[:k]
-        # -----------------------------------------------------------
-    # R5. Planear un viaje (directo o con un transbordo)
-    # -----------------------------------------------------------
-    def viaje(self, origen, destino):
-        """Lista de tramos (ruta, sube_en, baja_en, paradas).
 
-        [] si origen y destino son la misma estación, None si no hay viaje.
-        """
+    # R5. Planear un viaje (Santiago Serrano)
+    def viaje(self, origen, destino):
+        """Lista de tramos (ruta, sube_en, baja_en, paradas)."""
         origen = limpiar(origen)
         destino = limpiar(destino)
         if not self._esta_abierta(origen) or not self._esta_abierta(destino):
@@ -189,7 +202,6 @@ class Red:
         mejor = None
         mejor_total = 0
 
-        # Paso 1: desde el origen, avanzar por cada ruta que pasa por ahí.
         alcanzadas = TablaHash()
         for ruta in self.rutas_de.obtener(origen):
             paradas = self.rutas.obtener(ruta)
@@ -206,7 +218,6 @@ class Red:
                 if antes is None or cuantas < antes[0]:
                     alcanzadas.poner(estacion, (cuantas, ruta))
 
-        # Paso 2: desde el destino, retroceder por cada ruta que llega ahí.
         for ruta in self.rutas_de.obtener(destino):
             paradas = self.rutas.obtener(ruta)
             s = posicion_de(paradas, destino)
@@ -225,3 +236,154 @@ class Red:
                              (ruta, cambio, destino, s - q)]
                     mejor_total = total
         return mejor
+
+    # R7. Editar rutas (Santiago Velásquez)
+    def agregar_parada(self, ruta, nueva, despues_de):
+        nueva = limpiar(nueva)
+        despues_de = limpiar(despues_de)
+        if not self._agregar(ruta, nueva, despues_de):
+            return False
+        self._guardar_cambio(("agregar", ruta, nueva, despues_de))
+        return True
+
+    def quitar_parada(self, ruta, estacion):
+        estacion = limpiar(estacion)
+        paradas = self.rutas.obtener(ruta)
+        if paradas is None:
+            return False
+        i = posicion_de(paradas, estacion)
+        if i == -1:
+            return False
+        anterior = None
+        if i > 0:
+            anterior = paradas[i - 1]
+        self._quitar(ruta, estacion)
+        self._guardar_cambio(("quitar", ruta, estacion, anterior))
+        return True
+
+    def recorrido(self, ruta, al_reves=False):
+        paradas = self.rutas.obtener(ruta)
+        if paradas is None:
+            return []
+        if al_reves:
+            return paradas[::-1]
+        return paradas[:]
+
+    def _agregar(self, ruta, nueva, despues_de):
+        paradas = self.rutas.obtener(ruta)
+        if paradas is None or self.abierta.obtener(nueva) is None:
+            return False
+        if esta_en(paradas, nueva):
+            return False
+        if despues_de is None:
+            posicion = 0
+        else:
+            i = posicion_de(paradas, despues_de)
+            if i == -1:
+                return False
+            posicion = i + 1
+        insertar_en(paradas, posicion, nueva)
+        self.rutas_de.obtener(nueva).append(ruta)
+        self._sumar_buses(ruta, nueva, 1)
+        self.ranking_guardado = None
+        return True
+
+    def _quitar(self, ruta, estacion):
+        paradas = self.rutas.obtener(ruta)
+        borrar_en(paradas, posicion_de(paradas, estacion))
+        rutas = self.rutas_de.obtener(estacion)
+        borrar_en(rutas, posicion_de(rutas, ruta))
+        self._sumar_buses(ruta, estacion, -1)
+        self.ranking_guardado = None
+
+    # R8. Cerrar y reabrir (Santiago Velásquez)
+    def cerrar(self, nombre):
+        nombre = limpiar(nombre)
+        if self.abierta.obtener(nombre) is not True:
+            return False
+        self._poner_abierta(nombre, False)
+        self._guardar_cambio(("cerrar", nombre))
+        return True
+
+    def reabrir(self, nombre):
+        nombre = limpiar(nombre)
+        if self.abierta.obtener(nombre) is not False:
+            return False
+        self._poner_abierta(nombre, True)
+        self._guardar_cambio(("reabrir", nombre))
+        return True
+
+    def _poner_abierta(self, nombre, valor):
+        self.abierta.poner(nombre, valor)
+        self.ranking_guardado = None
+
+    # R9. Deshacer y rehacer (Santiago Velásquez)
+    def _guardar_cambio(self, cambio):
+        self.deshacer_lista.append(cambio)
+        self.rehacer_lista = []
+
+    def deshacer(self):
+        if len(self.deshacer_lista) == 0:
+            return False
+        cambio = self.deshacer_lista.pop()
+        self._aplicar(cambio, al_contrario=True)
+        self.rehacer_lista.append(cambio)
+        return True
+
+    def rehacer(self):
+        if len(self.rehacer_lista) == 0:
+            return False
+        cambio = self.rehacer_lista.pop()
+        self._aplicar(cambio, al_contrario=False)
+        self.deshacer_lista.append(cambio)
+        return True
+
+    def _aplicar(self, cambio, al_contrario):
+        tipo = cambio[0]
+        if tipo == "cerrar":
+            self._poner_abierta(cambio[1], al_contrario)
+        elif tipo == "reabrir":
+            self._poner_abierta(cambio[1], not al_contrario)
+        elif tipo == "agregar":
+            ruta, estacion, despues_de = cambio[1], cambio[2], cambio[3]
+            if al_contrario:
+                self._quitar(ruta, estacion)
+            else:
+                self._agregar(ruta, estacion, despues_de)
+        elif tipo == "quitar":
+            ruta, estacion, anterior = cambio[1], cambio[2], cambio[3]
+            if al_contrario:
+                self._agregar(ruta, estacion, anterior)
+            else:
+                self._quitar(ruta, estacion)
+
+
+# R10. Fila de abordaje (Santiago Velásquez)
+def simular_fila(llegadas, frecuencia, capacidad):
+    """Los buses salen en el minuto 0, frecuencia, 2*frecuencia, ..."""
+    for i in range(1, len(llegadas)):
+        if llegadas[i] < llegadas[i - 1]:
+            llegadas = ordenar(llegadas)
+            break
+    n = len(llegadas)
+    salida = [0] * n
+
+    fila = []
+    frente = 0
+    siguiente = 0
+    bus = 0
+
+    while siguiente < n or frente < len(fila):
+        if frente == len(fila) and llegadas[siguiente] > bus:
+            bus = (llegadas[siguiente] + frecuencia - 1) // frecuencia * frecuencia
+        while siguiente < n and llegadas[siguiente] <= bus:
+            fila.append(siguiente)
+            siguiente += 1
+        subidos = 0
+        while subidos < capacidad and frente < len(fila):
+            salida[fila[frente]] = bus
+            frente += 1
+            subidos += 1
+        bus += frecuencia
+    return salida
+
