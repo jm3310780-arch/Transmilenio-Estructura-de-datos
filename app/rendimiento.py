@@ -13,8 +13,8 @@
 # alargan al crecer n, así que P (paradas de una ruta) y h (buses de una
 # ruta en una estación) quedan fijos y solo crece n.
 #
-# Uso: python rendimiento.py          (la app usa medir() en su pestaña)
-#      python rendimiento.py rapido   (redes de 1.000 a 8.000, para probar)
+# Uso: python app/rendimiento.py      (la app usa medir() en su pestaña)
+#      python app/rendimiento.py rapido (redes de 1.000 a 8.000, para probar)
 
 import math
 import os
@@ -22,6 +22,9 @@ import random
 import sys
 import tempfile
 import time
+
+# Este archivo está en app/; el motor está en la carpeta de al lado.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from motor import Red, simular_fila
 
