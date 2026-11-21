@@ -41,6 +41,12 @@ assert red.autocompletar("X", 3) == []
 assert red.rango("CALLE 26", "CALLE 80") == ["CALLE 26", "CALLE 45", "CALLE 80"]
 assert red.rango("Z", "A") == []
 
+# R5
+assert red.viaje("A", "C") == [("R1", "A", "C")]
+assert red.viaje("A", "E") == [("R1", "A", "C"), ("R2", "C", "E")]
+assert red.viaje("D", "A") is None          # las rutas van en un solo sentido
+assert red.viaje("A", "A") == []
+
 # La red real carga bien
 red = Red(os.path.dirname(os.path.abspath(__file__)) + "/datos")
 assert red.estado("PORTAL NORTE") == "ABIERTA"
