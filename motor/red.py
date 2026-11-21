@@ -8,13 +8,13 @@
 #   self.rutas_de   TablaHash  estación -> lista de rutas que paran ahí
 #   self.en_ruta    TablaHash  "ruta|estación" -> cuántas veces está en la ruta
 #   self.horarios   TablaHash  "ruta|estación" -> lista ordenada de horas "HH:MM"
-#   self.buses      TablaHash  estación -> buses al día (para el ranking)
+#   self.ranking_m  MonticuloIndexado  [estación, buses al día]
 #   self.pila_deshacer / self.pila_rehacer   pilas de cambios (R9)
 
 import csv
 
-from .estructuras import (TablaHash, ordenar, buscar_desde, esta_ordenada,
-                          contar_valores)
+from .estructuras import (TablaHash, MonticuloIndexado, ordenar, buscar_desde,
+                          esta_ordenada, contar_valores)
 
 ABIERTA = "ABIERTA"
 CERRADA = "CERRADA"
@@ -174,14 +174,14 @@ class Red:
                 par[1] = ordenar(par[1])
 
         # Buses al día de cada estación: suma de los horarios de las rutas
-        # que paran ahí (para el ranking).
-        self.buses = TablaHash(len(nombres))
+        # que paran ahí. Se guardan en un montículo indexado (R6).
+        pares = []
         for nombre in nombres:
             total = 0
             for ruta in self.rutas_de.obtener(nombre):
                 total += self._buses_de(ruta, nombre)
-            self.buses.poner(nombre, total)
-        self.ranking_guardado = None  # None = hay que volver a calcularlo
+            pares.append([nombre, total])
+        self.ranking_m = MonticuloIndexado(pares, primero_en_ranking)
 
     def _buses_de(self, ruta, estacion):
         horas = self.horarios.obtener(ruta + "|" + estacion)
@@ -244,22 +244,27 @@ class Red:
         return resultado
 
     # -----------------------------------------------------------
-    # R4. Próximo bus (Santiago Wagner)
+    # R4. Próximo bus (Santiago Velásquez)   O(log h)
     # -----------------------------------------------------------
     def proximo_bus(self, estacion, ruta, hora):
         """Hora 'HH:MM' del siguiente bus (a esa hora o después), o None."""
         estacion = limpiar(estacion)
-        paradas = self.rutas.obtener(ruta)
-        if paradas is None or not esta_en(paradas, estacion):
+        ruta = limpiar_ruta(ruta)
+        hora = hora_bonita(hora)
+        if estacion is None or ruta is None or hora is None:
             return None
+        clave = ruta + "|" + estacion
+        veces = self.en_ruta.obtener(clave)
+        if veces is None or veces == 0:
+            return None  # la ruta no existe o no para en esa estación
         if not self._esta_abierta(estacion):
-            return None
-        horas = self.horarios.obtener(ruta + "|" + estacion)
+            return None  # cerrada: nadie sube ahí
+        horas = self.horarios.obtener(clave)
         if horas is None:
             return None
-        i = buscar_desde(horas, hora_bonita(hora))
+        i = buscar_desde(horas, hora)
         if i == len(horas):
-            return None
+            return None  # ya no pasan más buses hoy
         return horas[i]
 
     # -----------------------------------------------------------
@@ -323,20 +328,17 @@ class Red:
         return mejor
 
     # -----------------------------------------------------------
-    # R6. Ranking de estaciones con más buses (Santiago Wagner)
+    # R6. Ranking de estaciones con más buses (Santiago Velásquez)
+    #     O((k + c) log(k + c))
     # -----------------------------------------------------------
     def ranking(self, k):
         """Las k estaciones abiertas con más buses al día: [(nombre, buses)]."""
-        if self.ranking_guardado is None:
-            lista = []
-            for nombre, buses in self.buses.pares():
-                if self._esta_abierta(nombre):
-                    lista.append((nombre, buses))
-            self.ranking_guardado = ordenar(lista, primero_en_ranking)
-        return self.ranking_guardado[:k]
+        if k is None or k <= 0:
+            return []
+        return self.ranking_m.mejores(k, self._esta_abierta)
 
     # -----------------------------------------------------------
-    # R7. Editar rutas (Santiago Velásquez)   O(P)
+    # R7. Editar rutas (Santiago Wagner)   O(P)
     # -----------------------------------------------------------
     def agregar_parada(self, ruta, nueva, despues_de):
         """Pone 'nueva' justo después de 'despues_de' (None = al inicio)."""
@@ -413,18 +415,17 @@ class Red:
 
     def _sumar_buses(self, estacion, cuantos):
         if cuantos != 0:
-            self.buses.poner(estacion, self.buses.obtener(estacion) + cuantos)
-            self.ranking_guardado = None  # el ranking se vuelve a ordenar
+            actual = self.ranking_m.valor(estacion)
+            self.ranking_m.cambiar(estacion, actual + cuantos)  # O(log n)
 
     # -----------------------------------------------------------
-    # R8. Cerrar y reabrir (Santiago Velásquez)   O(1)
+    # R8. Cerrar y reabrir (Santiago Wagner)   O(1)
     # -----------------------------------------------------------
     def cerrar(self, nombre):
         nombre = limpiar(nombre)
         if self.abierta.obtener(nombre) is not True:
             return False  # no existe o ya estaba cerrada
         self.abierta.poner(nombre, False)
-        self.ranking_guardado = None
         self._guardar_cambio(("cerrar", nombre))
         return True
 
@@ -433,12 +434,11 @@ class Red:
         if self.abierta.obtener(nombre) is not False:
             return False  # no existe o ya estaba abierta
         self.abierta.poner(nombre, True)
-        self.ranking_guardado = None
         self._guardar_cambio(("reabrir", nombre))
         return True
 
     # -----------------------------------------------------------
-    # R9. Deshacer y rehacer con dos pilas (Santiago Velásquez)
+    # R9. Deshacer y rehacer con dos pilas (Santiago Wagner)
     # -----------------------------------------------------------
     def _guardar_cambio(self, cambio):
         self.pila_deshacer.append(cambio)
@@ -466,10 +466,8 @@ class Red:
         if tipo == "cerrar":
             # deshacer un cierre = reabrir; rehacerlo = cerrar
             self.abierta.poner(cambio[1], al_contrario)
-            self.ranking_guardado = None
         elif tipo == "reabrir":
             self.abierta.poner(cambio[1], not al_contrario)
-            self.ranking_guardado = None
         elif tipo == "agregar":
             ruta, estacion, despues_de = cambio[1], cambio[2], cambio[3]
             if al_contrario:
@@ -485,7 +483,7 @@ class Red:
 
 
 # ---------------------------------------------------------------
-# R10. Fila de abordaje (Santiago Velásquez)
+# R10. Fila de abordaje (Santiago Wagner)
 # ---------------------------------------------------------------
 # Los buses salen en los segundos frecuencia, 2*frecuencia, 3*frecuencia, ...
 # (el primero sale en el segundo "frecuencia", no en el 0). Quien llega justo cuando sale un bus alcanza
