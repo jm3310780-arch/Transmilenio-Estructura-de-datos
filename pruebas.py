@@ -41,11 +41,23 @@ assert red.autocompletar("X", 3) == []
 assert red.rango("CALLE 26", "CALLE 80") == ["CALLE 26", "CALLE 45", "CALLE 80"]
 assert red.rango("Z", "A") == []
 
+# R4
+assert red.proximo_bus("A", "R1", "05:00") == "05:30"
+assert red.proximo_bus("A", "R1", "06:00") == "06:00"
+assert red.proximo_bus("A", "R1", "6:01") == "07:15"
+assert red.proximo_bus("A", "R1", "08:00") is None
+assert red.proximo_bus("E", "R1", "05:00") is None
+
 # R5
 assert red.viaje("A", "C") == [("R1", "A", "C")]
 assert red.viaje("A", "E") == [("R1", "A", "C"), ("R2", "C", "E")]
 assert red.viaje("D", "A") is None          # las rutas van en un solo sentido
 assert red.viaje("A", "A") == []
+
+# R6
+assert red.ranking(2) == [("A", 3), ("C", 3)]
+assert red.ranking(0) == []
+assert len(red.ranking(100)) == 9     # todas las abiertas
 
 # R7
 assert red.agregar_parada("R1", "E", "B") is True
