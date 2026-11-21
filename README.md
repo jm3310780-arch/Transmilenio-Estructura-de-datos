@@ -6,19 +6,85 @@ con la red real de TransMilenio.
 
 ## Cómo arrancar la app
 
+Resumen: desde la carpeta del proyecto, se instalan las librerías una vez y
+la app arranca con un solo comando.
+
 ```bash
 pip install -r requirements.txt
 streamlit run app/app.py
 ```
 
-Se abre sola en el navegador (http://localhost:8501). Otros comandos:
+### Paso a paso
+
+**1. Tener Python 3.10 o más nuevo.** En una terminal escribe `python --version`
+(en Windows también sirve `py --version`). Si no aparece una versión,
+descárgalo de https://www.python.org/downloads/ (en Windows, marca la casilla
+**"Add Python to PATH"** al instalarlo).
+
+**2. Descargar el proyecto.** Con git:
+
+```bash
+git clone https://github.com/jm3310780-arch/Transmilenio-Estructura-de-datos.git
+cd Transmilenio-Estructura-de-datos
+```
+
+O sin git: en GitHub, botón verde **Code → Download ZIP**, descomprimirlo
+(clic derecho → Extraer todo) y entrar a la carpeta.
+
+**3. Abrir una terminal en la carpeta del proyecto** (la que tiene `app/`,
+`motor/` y `datos/`):
+
+- Windows: en el Explorador de archivos, clic derecho en un espacio vacío
+  de la carpeta → **Abrir en Terminal**.
+- Mac: clic derecho sobre la carpeta → **Nuevo terminal en la carpeta**.
+
+Para comprobar que estás en el lugar correcto, escribe `dir` (Windows) o
+`ls` (Mac/Linux): deben aparecer `app`, `motor`, `datos` y `pruebas.py`.
+
+**4. Instalar las librerías de la app** (solo la primera vez):
+
+```bash
+pip install -r requirements.txt
+```
+
+Si `pip` no se reconoce, usa `python -m pip install -r requirements.txt`
+(en Windows: `py -m pip install -r requirements.txt`).
+
+**5. (Opcional) Probar el motor:**
+
+```bash
+python pruebas.py
+```
+
+Debe decir `Todas las pruebas pasaron`.
+
+**6. Abrir la app:**
+
+```bash
+streamlit run app/app.py
+```
+
+Si `streamlit` no se reconoce, usa `python -m streamlit run app/app.py`
+(en Windows: `py -m streamlit run app/app.py`). La primera vez puede pedir un
+correo: se deja vacío y se presiona Enter. Si Windows pregunta por el
+firewall, se permite.
+
+**7. Usarla.** Se abre sola en el navegador; si no, entra a
+http://localhost:8501. Tiene una pestaña por requisito: Buscar (R1 y R2),
+Rango (R3), Próximo bus (R4), Viaje (R5), Ranking (R6), Operar (R7, R8 y R9),
+Fila (R10) y Rendimiento (R11).
+
+**8. Cerrarla:** en la terminal, **Ctrl + C**. Mientras la app esté abierta no
+hay que cerrar la terminal.
+
+### Otros comandos
 
 | Comando | Qué hace |
 | --- | --- |
 | `python pruebas.py` | Prueba el motor (R1 a R10, con casos borde) |
 | `python app/rendimiento.py` | Panel de rendimiento (R11) en la consola, redes de 10.000 a 80.000 estaciones |
 | `python app/rendimiento.py rapido` | Lo mismo con redes de 1.000 a 8.000 |
-| `python convertir_gtfs.py gtfs.zip datos` | Convierte el GTFS a los tres CSV |
+| `python convertir_gtfs.py gtfs.zip datos` | Convierte el GTFS a los tres CSV (necesita `pandas`) |
 
 ## Estructura del repositorio
 
