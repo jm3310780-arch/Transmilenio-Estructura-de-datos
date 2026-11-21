@@ -1,8 +1,7 @@
 # Integrantes
-
-| Integrante | Requisitos / Módulos |
+| Integrante | Requisitos que hizo |
 | --- | --- |
-| **José** | R1 (Buscar estación), R2 (Autocompletar), R3 (Rango) y script de conversión GTFS. |
-| **Santiago Wagner** | R4 (Próximo bus) y R6 (Ranking de estaciones). |
-| **Santiago Serrano** | R5 (Planear un viaje directo y con transbordo). |
-| **Santiago Velásquez** | R7 (Editar rutas), R8 (Cerrar/reabrir), R9 (Deshacer/rehacer), R10 (Simular fila), R11 (Rendimiento) y R12 (README). |
+| **José** | Carga de la red, R1 (buscar estación), R2 (autocompletar), R3 (rango), estructuras base (tabla hash, merge sort, búsqueda binaria) y script de conversión del GTFS. |
+| **Santiago Serrano** | R5 (planear viaje directo o con un transbordo) y R12 (README de decisiones). |
+| **Santiago Wagner** | R7 (editar rutas), R8 (cerrar y reabrir), R9 (deshacer y rehacer), R10 (fila de abordaje), R11 (panel de rendimiento) y el front (`app.py`). |
+| **Santiago Velásquez (Duham)** | R4 (próximo bus) y R6 (ranking con montículo indexado). |
