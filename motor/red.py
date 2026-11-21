@@ -265,7 +265,12 @@ class Red:
     # R5. Planear un viaje, directo o con un transbordo (Santiago Serrano)
     # -----------------------------------------------------------
     def viaje(self, origen, destino):
-        """Lista de tramos (ruta, sube_en, baja_en, paradas)."""
+        """Lista de tramos (ruta, sube_en, baja_en) con menos paradas.
+
+        1 tramo si es directo, 2 si hay transbordo. None si no hay viaje
+        (estación inexistente o cerrada, o no se llega con un transbordo).
+        [] si origen y destino son la misma estación (no hay que viajar).
+        """
         origen = limpiar(origen)
         destino = limpiar(destino)
         if not self._esta_abierta(origen) or not self._esta_abierta(destino):
@@ -276,6 +281,9 @@ class Red:
         mejor = None
         mejor_total = 0
 
+        # Paso 1: desde el origen, avanzar por cada ruta que pasa por ahí.
+        # "alcanzadas" guarda, para cada estación, (paradas, ruta) del
+        # camino directo más corto que encontramos para llegar a ella.
         alcanzadas = TablaHash()
         for ruta in self.rutas_de.obtener(origen):
             paradas = self.rutas.obtener(ruta)
@@ -285,13 +293,16 @@ class Red:
                 cuantas = j - i
                 if estacion == destino:
                     if mejor is None or cuantas < mejor_total:
-                        mejor = [(ruta, origen, destino, cuantas)]
+                        mejor = [(ruta, origen, destino)]
                         mejor_total = cuantas
                     break
                 antes = alcanzadas.obtener(estacion)
                 if antes is None or cuantas < antes[0]:
                     alcanzadas.poner(estacion, (cuantas, ruta))
 
+        # Paso 2: desde el destino, retroceder por cada ruta que llega ahí.
+        # Si una estación abierta también se alcanzó en el paso 1 con otra
+        # ruta, se puede transbordar en ella.
         for ruta in self.rutas_de.obtener(destino):
             paradas = self.rutas.obtener(ruta)
             s = posicion_de(paradas, destino)
@@ -306,8 +317,7 @@ class Red:
                     continue
                 total = llegada[0] + (s - q)
                 if mejor is None or total < mejor_total:
-                    mejor = [(llegada[1], origen, cambio, llegada[0]),
-                             (ruta, cambio, destino, s - q)]
+                    mejor = [(llegada[1], origen, cambio), (ruta, cambio, destino)]
                     mejor_total = total
         return mejor
 
