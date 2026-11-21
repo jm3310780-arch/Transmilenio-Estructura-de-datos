@@ -47,7 +47,3 @@ assert red.estado("PORTAL NORTE") == "ABIERTA"
 assert red.viaje("PORTAL NORTE", "PORTAL SUR") is not None
 
 print("Todas las pruebas pasaron")
-
-print("Todas las pruebas pasaron")
-EOF
-
