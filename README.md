@@ -8,7 +8,7 @@ con la red real de TransMilenio.
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run app/app.py
 ```
 
 Se abre sola en el navegador (http://localhost:8501). Otros comandos:
@@ -16,8 +16,8 @@ Se abre sola en el navegador (http://localhost:8501). Otros comandos:
 | Comando | Qué hace |
 | --- | --- |
 | `python pruebas.py` | Prueba el motor (R1 a R10, con casos borde) |
-| `python rendimiento.py` | Panel de rendimiento (R11) en la consola, redes de 10.000 a 80.000 estaciones |
-| `python rendimiento.py rapido` | Lo mismo con redes de 1.000 a 8.000 |
+| `python app/rendimiento.py` | Panel de rendimiento (R11) en la consola, redes de 10.000 a 80.000 estaciones |
+| `python app/rendimiento.py rapido` | Lo mismo con redes de 1.000 a 8.000 |
 | `python convertir_gtfs.py gtfs.zip datos` | Convierte el GTFS a los tres CSV |
 
 ## Estructura del repositorio
@@ -27,8 +27,8 @@ Se abre sola en el navegador (http://localhost:8501). Otros comandos:
 | `motor/` | **Todo** el motor. `from motor import Red, simular_fila` |
 | `motor/estructuras.py` | Tabla hash, merge sort y búsqueda binaria, hechos por nosotros |
 | `motor/red.py` | La clase `Red` (R1 a R9) y `simular_fila` (R10) |
-| `app.py` | El front (Streamlit). Solo llama al motor |
-| `rendimiento.py` | Genera redes de tamaño n y mide cada operación (R11) |
+| `app/app.py` | El front (Streamlit), en su propia carpeta. Solo llama al motor |
+| `app/rendimiento.py` | Panel de rendimiento (R11): genera redes de tamaño n y mide cada operación |
 | `convertir_gtfs.py` | GTFS → `estaciones.csv`, `rutas.csv`, `horarios.csv` |
 | `datos/` | Los tres CSV ya generados |
 | `pruebas.py` | Pruebas del motor |
@@ -235,7 +235,7 @@ en O(p²); y ordenar siempre con merge sort, que da O(p log p).
 
 ## Panel de rendimiento (R11)
 
-Pestaña **Rendimiento** de la app (o `python rendimiento.py`). Igual que el
+Pestaña **Rendimiento** de la app (o `python app/rendimiento.py`). Igual que el
 script del curso: genera redes con el formato de los CSV de 10.000, 20.000,
 40.000 y 80.000 estaciones, toma la **mediana** de varias repeticiones de cada
 operación y calcula la **pendiente** de log(tiempo) contra log(n)
