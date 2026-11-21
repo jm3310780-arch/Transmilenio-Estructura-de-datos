@@ -208,10 +208,12 @@ class Red:
     # -----------------------------------------------------------
     def autocompletar(self, prefijo, k):
         """Hasta k estaciones abiertas que empiezan por prefijo, en orden."""
-        prefijo = limpiar(prefijo)
         resultado = []
         if prefijo is None or k is None or k <= 0:
             return resultado
+        # Solo mayúsculas: NO se quitan los espacios del final, porque
+        # "CALLE " (con espacio) no es lo mismo que "CALLE".
+        prefijo = str(prefijo).upper()
         nombres = self.nombres
         # Con búsqueda binaria saltamos al primer nombre >= prefijo.
         i = buscar_desde(nombres, prefijo)
@@ -229,11 +231,11 @@ class Red:
     # -----------------------------------------------------------
     def rango(self, desde, hasta):
         """Estaciones abiertas entre desde y hasta (incluidas), en orden."""
-        desde = limpiar(desde)
-        hasta = limpiar(hasta)
         resultado = []
         if desde is None or hasta is None:
             return resultado
+        desde = str(desde).upper()   # igual que en R2: sin quitar espacios
+        hasta = str(hasta).upper()
         nombres = self.nombres
         i = buscar_desde(nombres, desde)
         while i < len(nombres) and nombres[i] <= hasta:
