@@ -38,11 +38,11 @@ ESPERADO = {
     "R2 autocompletar": ("O(log n + k)", 0),
     "R3 rango": ("O(log n + m)", 0),
     "R4 proximo_bus": ("O(log h)", 0),
-    "R6 ranking": ("O((k + c) log(k + c))", 0),
-    "R7 agregar y quitar": ("O(P + log n)", 0),
+    "R6 ranking": ("O(k + c)", 0),
+    "R7 agregar y quitar": ("O(P)", 0),
     "R7 recorrido": ("O(P)", 0),
     "R8 cerrar y reabrir": ("O(1)", 0),
-    "R9 deshacer y rehacer": ("O(P + log n)", 0),
+    "R9 deshacer y rehacer": ("O(P)", 0),
     "R10 simular_fila (p = 5n)": ("O(p)", 1),
     "Carga Red(carpeta)": ("O(n log n + H)", 1),
 }
@@ -53,10 +53,11 @@ EXPLICACION = {
     "R2 autocompletar": "Crece un poco por el log n de la búsqueda binaria y porque "
                         "una lista más grande cabe peor en la caché del procesador.",
     "R3 rango": "Igual que R2: log n de la búsqueda binaria + m resultados (m fijo aquí).",
-    "R6 ranking": "No depende de n: solo visita los k mejores del montículo más las "
-                  "c estaciones cerradas que se salta (aquí c = 5 fijo).",
-    "R7 agregar y quitar": "O(P) por correr las paradas de la ruta y O(log n) por "
-                           "acomodar la estación en el montículo del ranking.",
+    "R6 ranking": "No depende de n: la lista ya está ordenada y solo se leen las k "
+                  "primeras abiertas más las c cerradas que se saltan (aquí c = 5). "
+                  "Solo después de editar una ruta se reordena una vez: O(n log n).",
+    "R7 agregar y quitar": "O(P) por buscar y correr las paradas de la ruta. No toca el "
+                           "ranking: solo lo marca para reordenarlo en la próxima consulta.",
     "R10 simular_fila (p = 5n)": "Los pasajeros crecen con n (p = 5n), así que debe ser "
                                  "lineal. Si sale algo más de 1 es la caché: listas de "
                                  "cientos de miles de elementos ya no caben en ella.",
