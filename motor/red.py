@@ -9,11 +9,12 @@
 #   self.en_ruta    TablaHash  "ruta|estación" -> cuántas veces está en la ruta
 #   self.horarios   TablaHash  "ruta|estación" -> lista ordenada de horas "HH:MM"
 #   self.buses      TablaHash  estación -> buses al día (para el ranking)
-#   self.deshacer_lista / self.rehacer_lista   pilas de cambios (R9)
+#   self.pila_deshacer / self.pila_rehacer   pilas de cambios (R9)
 
 import csv
 
-from .estructuras import TablaHash, ordenar, buscar_desde, esta_ordenada
+from .estructuras import (TablaHash, ordenar, buscar_desde, esta_ordenada,
+                          contar_valores)
 
 ABIERTA = "ABIERTA"
 CERRADA = "CERRADA"
@@ -110,8 +111,8 @@ class Red:
     # -----------------------------------------------------------
     def __init__(self, carpeta):
         carpeta = str(carpeta).rstrip("/\\")
-        self.deshacer_lista = []
-        self.rehacer_lista = []
+        self.pila_deshacer = []
+        self.pila_rehacer = []
 
         # Estaciones (todas abiertas al cargar).
         filas_est = leer_csv(carpeta + "/estaciones.csv")
@@ -335,9 +336,11 @@ class Red:
         return self.ranking_guardado[:k]
 
     # -----------------------------------------------------------
-    # R7. Editar rutas (Santiago Velásquez)
+    # R7. Editar rutas (Santiago Velásquez)   O(P)
     # -----------------------------------------------------------
     def agregar_parada(self, ruta, nueva, despues_de):
+        """Pone 'nueva' justo después de 'despues_de' (None = al inicio)."""
+        ruta = limpiar_ruta(ruta)
         nueva = limpiar(nueva)
         despues_de = limpiar(despues_de)
         if not self._agregar(ruta, nueva, despues_de):
@@ -346,6 +349,8 @@ class Red:
         return True
 
     def quitar_parada(self, ruta, estacion):
+        """Quita la estación de la ruta. False si no estaba."""
+        ruta = limpiar_ruta(ruta)
         estacion = limpiar(estacion)
         paradas = self.rutas.obtener(ruta)
         if paradas is None:
@@ -356,12 +361,14 @@ class Red:
         anterior = None
         if i > 0:
             anterior = paradas[i - 1]
-        self._quitar(ruta, estacion)
+        self._quitar(ruta, estacion, i)
+        # Guardamos la anterior para poder deshacer y dejarla donde estaba.
         self._guardar_cambio(("quitar", ruta, estacion, anterior))
         return True
 
     def recorrido(self, ruta, al_reves=False):
-        paradas = self.rutas.obtener(ruta)
+        """Estaciones de la ruta en orden ([] si la ruta no existe)."""
+        paradas = self.rutas.obtener(limpiar_ruta(ruta))
         if paradas is None:
             return []
         if al_reves:
@@ -369,11 +376,15 @@ class Red:
         return paradas[:]
 
     def _agregar(self, ruta, nueva, despues_de):
+        if ruta is None or nueva is None:
+            return False
         paradas = self.rutas.obtener(ruta)
         if paradas is None or self.abierta.obtener(nueva) is None:
             return False
-        if esta_en(paradas, nueva):
-            return False
+        clave = ruta + "|" + nueva
+        veces = self.en_ruta.obtener(clave)
+        if veces is not None and veces > 0:
+            return False  # ya está en la ruta
         if despues_de is None:
             posicion = 0
         else:
@@ -382,67 +393,83 @@ class Red:
                 return False
             posicion = i + 1
         insertar_en(paradas, posicion, nueva)
+        self.en_ruta.poner(clave, 1)
         self.rutas_de.obtener(nueva).append(ruta)
-        self._sumar_buses(ruta, nueva, 1)
-        self.ranking_guardado = None
+        self._sumar_buses(nueva, self._buses_de(ruta, nueva))
         return True
 
-    def _quitar(self, ruta, estacion):
+    def _quitar(self, ruta, estacion, i=-1):
         paradas = self.rutas.obtener(ruta)
-        borrar_en(paradas, posicion_de(paradas, estacion))
-        rutas = self.rutas_de.obtener(estacion)
-        borrar_en(rutas, posicion_de(rutas, ruta))
-        self._sumar_buses(ruta, estacion, -1)
-        self.ranking_guardado = None
+        if i == -1:
+            i = posicion_de(paradas, estacion)
+        borrar_en(paradas, i)
+        clave = ruta + "|" + estacion
+        veces = self.en_ruta.obtener(clave) - 1
+        self.en_ruta.poner(clave, veces)
+        if veces == 0:
+            rutas = self.rutas_de.obtener(estacion)
+            borrar_en(rutas, posicion_de(rutas, ruta))
+            self._sumar_buses(estacion, -self._buses_de(ruta, estacion))
 
-    # R8. Cerrar y reabrir (Santiago Velásquez)
+    def _sumar_buses(self, estacion, cuantos):
+        if cuantos != 0:
+            self.buses.poner(estacion, self.buses.obtener(estacion) + cuantos)
+            self.ranking_guardado = None  # el ranking se vuelve a ordenar
+
+    # -----------------------------------------------------------
+    # R8. Cerrar y reabrir (Santiago Velásquez)   O(1)
+    # -----------------------------------------------------------
     def cerrar(self, nombre):
         nombre = limpiar(nombre)
         if self.abierta.obtener(nombre) is not True:
-            return False
-        self._poner_abierta(nombre, False)
+            return False  # no existe o ya estaba cerrada
+        self.abierta.poner(nombre, False)
+        self.ranking_guardado = None
         self._guardar_cambio(("cerrar", nombre))
         return True
 
     def reabrir(self, nombre):
         nombre = limpiar(nombre)
         if self.abierta.obtener(nombre) is not False:
-            return False
-        self._poner_abierta(nombre, True)
+            return False  # no existe o ya estaba abierta
+        self.abierta.poner(nombre, True)
+        self.ranking_guardado = None
         self._guardar_cambio(("reabrir", nombre))
         return True
 
-    def _poner_abierta(self, nombre, valor):
-        self.abierta.poner(nombre, valor)
-        self.ranking_guardado = None
-
-    # R9. Deshacer y rehacer (Santiago Velásquez)
+    # -----------------------------------------------------------
+    # R9. Deshacer y rehacer con dos pilas (Santiago Velásquez)
+    # -----------------------------------------------------------
     def _guardar_cambio(self, cambio):
-        self.deshacer_lista.append(cambio)
-        self.rehacer_lista = []
+        self.pila_deshacer.append(cambio)
+        self.pila_rehacer = []  # un cambio nuevo borra lo que había para rehacer
 
     def deshacer(self):
-        if len(self.deshacer_lista) == 0:
+        if len(self.pila_deshacer) == 0:
             return False
-        cambio = self.deshacer_lista.pop()
+        cambio = self.pila_deshacer.pop()
         self._aplicar(cambio, al_contrario=True)
-        self.rehacer_lista.append(cambio)
+        self.pila_rehacer.append(cambio)
         return True
 
     def rehacer(self):
-        if len(self.rehacer_lista) == 0:
+        if len(self.pila_rehacer) == 0:
             return False
-        cambio = self.rehacer_lista.pop()
+        cambio = self.pila_rehacer.pop()
         self._aplicar(cambio, al_contrario=False)
-        self.deshacer_lista.append(cambio)
+        self.pila_deshacer.append(cambio)
         return True
 
     def _aplicar(self, cambio, al_contrario):
+        """Aplica un cambio guardado. Si al_contrario es True, hace lo opuesto."""
         tipo = cambio[0]
         if tipo == "cerrar":
-            self._poner_abierta(cambio[1], al_contrario)
+            # deshacer un cierre = reabrir; rehacerlo = cerrar
+            self.abierta.poner(cambio[1], al_contrario)
+            self.ranking_guardado = None
         elif tipo == "reabrir":
-            self._poner_abierta(cambio[1], not al_contrario)
+            self.abierta.poner(cambio[1], not al_contrario)
+            self.ranking_guardado = None
         elif tipo == "agregar":
             ruta, estacion, despues_de = cambio[1], cambio[2], cambio[3]
             if al_contrario:
@@ -459,31 +486,90 @@ class Red:
 
 # ---------------------------------------------------------------
 # R10. Fila de abordaje (Santiago Velásquez)
-def simular_fila(llegadas, frecuencia, capacidad):
-    """Los buses salen en el minuto 0, frecuencia, 2*frecuencia, ..."""
-    for i in range(1, len(llegadas)):
-        if llegadas[i] < llegadas[i - 1]:
-            llegadas = ordenar(llegadas)
-            break
-    n = len(llegadas)
-    salida = [0] * n
+# ---------------------------------------------------------------
+# Los buses salen en los segundos frecuencia, 2*frecuencia, 3*frecuencia, ...
+# (el primero sale en el segundo "frecuencia", no en el 0). Quien llega justo cuando sale un bus alcanza
+# a subir. Si el bus se llena, los demás esperan el siguiente, en orden de
+# llegada (si llegan en el mismo segundo, primero el que va antes en la lista).
 
+
+def simular_fila(llegadas, frecuencia, capacidad):
+    """Segundo en que sale el bus de cada persona, en el orden de 'llegadas'.
+
+    Ejemplo: simular_fila([30, 5, 5, 70], 60, 2) -> [120, 60, 60, 120]
+    O(p + R) con segundos enteros (R = segundos entre la primera y la última
+    llegada); O(p log p) si hay que usar merge sort.
+    """
+    p = len(llegadas)
+    if p == 0 or frecuencia <= 0 or capacidad <= 0:
+        return [None] * p
+
+    # 1. Ordenar las llegadas. t = segundos de llegada en orden.
+    conteo = None
+    orden = None
+    if esta_ordenada(llegadas):
+        t = llegadas                                    # O(p)
+    else:
+        contados = contar_valores(llegadas)
+        if contados is not None:                        # counting sort O(p + R)
+            menor_v, conteo = contados
+            t = []
+            for v in range(len(conteo)):
+                if conteo[v] > 0:
+                    t += [menor_v + v] * conteo[v]
+        else:                                           # merge sort O(p log p)
+            pares = [None] * p
+            for i in range(p):
+                pares[i] = (llegadas[i], i)  # el índice desempata: estable
+            pares = ordenar(pares)
+            t = [0] * p
+            orden = [0] * p
+            for i in range(p):
+                t[i] = pares[i][0]
+                orden[i] = pares[i][1]
+
+    # 2. Simular. La fila es una cola: una lista donde se agrega al final y
+    #    "frente" marca quién sigue. (fila.pop(0) correría a todos: O(p).)
+    #    sale[i] = segundo en que sale el bus de la i-ésima persona en llegar.
+    sale = [0] * p
     fila = []
     frente = 0
-    siguiente = 0
-    bus = 0
-
-    while siguiente < n or frente < len(fila):
-        if frente == len(fila) and llegadas[siguiente] > bus:
-            bus = (llegadas[siguiente] + frecuencia - 1) // frecuencia * frecuencia
-        while siguiente < n and llegadas[siguiente] <= bus:
+    siguiente = 0  # siguiente persona (en orden de llegada) que no ha llegado
+    bus = frecuencia  # el primer bus sale en el segundo 'frecuencia'
+    while siguiente < p or frente < len(fila):
+        # Si no hay nadie esperando, saltamos al primer bus que le sirve
+        # al siguiente que llega (no simulamos buses vacíos).
+        if frente == len(fila) and t[siguiente] > bus:
+            bus = -(-t[siguiente] // frecuencia) * frecuencia  # múltiplo >= t
+        # Entran a la fila los que llegan antes de que salga el bus.
+        while siguiente < p and t[siguiente] <= bus:
             fila.append(siguiente)
             siguiente += 1
+        # Suben en orden de llegada hasta llenar el bus.
         subidos = 0
         while subidos < capacidad and frente < len(fila):
-            salida[fila[frente]] = bus
+            sale[fila[frente]] = bus
             frente += 1
             subidos += 1
         bus += frecuencia
-    return salida
 
+    # 3. Devolver en el mismo orden de 'llegadas'.
+    if conteo is None and orden is None:
+        return sale                       # ya venían en orden
+    salida = [None] * p
+    if orden is not None:
+        for i in range(p):
+            salida[orden[i]] = sale[i]
+        return salida
+    # Con counting sort: los que llegaron en el segundo v ocupan, en orden de
+    # llegada, las posiciones inicio[v], inicio[v] + 1, ... de "sale".
+    inicio = [0] * len(conteo)
+    acumulado = 0
+    for v in range(len(conteo)):
+        inicio[v] = acumulado
+        acumulado += conteo[v]
+    for i in range(p):
+        v = llegadas[i] - menor_v
+        salida[i] = sale[inicio[v]]
+        inicio[v] += 1
+    return salida
