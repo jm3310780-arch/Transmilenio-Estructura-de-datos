@@ -1,1 +1,1 @@
-from motor.red import Red
+from .red import Red, simular_fila
