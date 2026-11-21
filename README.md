@@ -25,7 +25,7 @@ Se abre sola en el navegador (http://localhost:8501). Otros comandos:
 | Archivo / carpeta | Qué tiene |
 | --- | --- |
 | `motor/` | **Todo** el motor. `from motor import Red, simular_fila` |
-| `motor/estructuras.py` | Tabla hash, merge sort, conteo (counting sort), búsqueda binaria, montículo y montículo indexado, hechos por nosotros |
+| `motor/estructuras.py` | Tabla hash, merge sort y búsqueda binaria, hechos por nosotros |
 | `motor/red.py` | La clase `Red` (R1 a R9) y `simular_fila` (R10) |
 | `app.py` | El front (Streamlit). Solo llama al motor |
 | `rendimiento.py` | Genera redes de tamaño n y mide cada operación (R11) |
@@ -102,8 +102,8 @@ Qué es cada letra:
 Se leen los tres CSV una vez. Las estaciones se guardan en una tabla hash y en
 una lista ordenada con merge sort (O(n log n)). Las paradas de cada ruta se
 ordenan por la columna `orden`. Los horarios se agrupan por `"ruta|estación"`
-y cada grupo se ordena (si ya viene ordenado, solo se revisa en O(h)). Al
-final se arma el montículo del ranking en O(n) (heapify).
+y cada grupo se ordena con merge sort. Al final se cuentan los buses al día
+de cada estación (para el ranking).
 
 ### R1. Buscar una estación — tabla hash, O(1) promedio
 
@@ -163,34 +163,33 @@ nadie sube, baja ni transborda.
 sobre todo el grafo, que encuentra el camino de menos paradas pero no
 controla bien "máximo un transbordo".
 
-### R6. Ranking — montículo indexado, O((k + c) log(k + c))
+### R6. Ranking — lista ordenada guardada, O(k + c)
 
-**Estructura:** `MonticuloIndexado` con pares `[estación, buses al día]`
-(más buses arriba; empate, orden alfabético) más una `TablaHash`
-estación → posición en el montículo.
-**Consulta:** recorremos el montículo desde la raíz con un montículo
-auxiliar de candidatos (empieza con la raíz; se saca el mejor y se meten sus
-dos hijos). Así salen en orden sin desarmar el montículo principal. Las
-cerradas se saltan. Se visitan k + c nodos → O((k + c) log(k + c)),
-**no depende de n**.
+**Estructura:** una `TablaHash` estación → buses al día, y una lista de
+**todas** las estaciones (abiertas y cerradas) ordenada con merge sort de más
+a menos buses (empate: orden alfabético). La lista se guarda y se reutiliza.
+**Consulta:** se recorre la lista guardada desde el principio, saltando las
+cerradas, hasta tener k. O(k + c), **no depende de n**.
 **Cómo se mantiene al día:**
-- Cerrar o reabrir (R8) **no toca** el montículo: la consulta pregunta a la
-  tabla hash si cada estación está abierta. O(1).
-- Editar una ruta (R7) cambia los buses de una sola estación: se busca su
-  posición en la tabla hash y se sube o baja en el montículo. O(log n).
+- Cerrar o reabrir (R8) **no obliga a reordenar**: las cerradas siguen en la
+  lista y la consulta se las salta (pregunta a la tabla hash, O(1)).
+- Editar una ruta (R7) cambia los buses de una estación: se marca la lista
+  como desactualizada y se vuelve a ordenar **una sola vez**, en la siguiente
+  consulta (O(n log n)). Como dice el enunciado, el ranking se consulta mucho
+  y cambia poco, así que casi todas las consultas cuestan O(k + c).
 
 **Descartamos:** ordenar todas las estaciones en cada consulta
-(O(n log n)); guardar la lista ordenada y reordenar después de cada cambio
-(la primera consulta después de un cierre costaría O(n log n)); y una lista
-ordenada donde se reubica la estación al editar (O(n) por correr elementos).
+(O(n log n) siempre); quitar las cerradas de la lista al cerrar (habría que
+reordenar o correr elementos al reabrir); y un montículo (heap), que
+actualiza en O(log n) pero es más difícil y para este uso no hace falta.
 
-### R7. Editar rutas — lista (arreglo) por ruta, O(P + log n)
+### R7. Editar rutas — lista (arreglo) por ruta, O(P)
 
 **Estructura:** cada ruta es una lista de estaciones en orden.
 - `agregar_parada`: se busca `despues_de` recorriendo la ruta (O(P)) y se
-  corren las siguientes una casilla (O(P)). Se actualiza el montículo del
-  ranking (O(log n)).
-- `quitar_parada`: igual, corriendo al otro lado. O(P + log n).
+  corren las siguientes una casilla (O(P)). Se suman los buses de la
+  estación y se marca el ranking para reordenar.
+- `quitar_parada`: igual, corriendo al otro lado. O(P).
 - `recorrido`: copia la lista, al derecho o al revés. O(P).
 
 **Descartamos:** una lista doblemente enlazada, que inserta en O(1) pero
@@ -211,29 +210,28 @@ se guarda como una tupla, por ejemplo `("cerrar", "CALLE 26")` o
 `("quitar", ruta, estación, la_que_estaba_antes)`. Deshacer saca el último de
 la pila de deshacer, hace lo contrario y lo pasa a la pila de rehacer; rehacer
 hace lo opuesto. Un cambio nuevo vacía la pila de rehacer.
-Costo: O(1) para cierres y O(P + log n) para ediciones de ruta.
+Costo: O(1) para cierres y O(P) para ediciones de ruta.
 **Descartamos:** guardar una copia de toda la red en cada cambio (O(n) por
 cambio y mucha memoria).
 
 ### R10. Fila de abordaje — counting sort + cola, O(p + R)
 
-1. **Ordenar las llegadas** (la gente sube en orden de llegada):
-   - si ya vienen en orden, solo se revisa: O(p);
-   - si son segundos enteros (lo normal): counting sort, O(p + R). Se cuenta
-     cuántas personas llegan en cada segundo y con eso se arma la lista
-     ordenada sin comparar;
-   - si no (decimales o un rango enorme): merge sort estable, O(p log p).
-2. **Simular con una cola** (FIFO): una lista donde se agrega al final y un
-   índice `frente` marca quién sigue. Cada bus sube hasta `capacidad`
-   personas del frente. Si la fila está vacía, saltamos directo al primer
-   bus que le sirve al siguiente pasajero (no se simulan buses vacíos).
-   O(p + buses con gente) = O(p).
-3. **Devolver en el orden original:** las personas que llegaron en el segundo
-   v ocupan posiciones seguidas en la lista ordenada, así que se reparten en
-   un solo recorrido. O(p + R).
+1. **Ordenar las llegadas** (la gente sube en orden de llegada) con
+   **counting sort**: se cuenta cuántas personas llegan en cada segundo
+   (`contar_por_segundo`) y con esos conteos se arma la lista de llegadas
+   en orden, sin comparar. O(p + R). Si hubiera segundos con decimales, se
+   usa merge sort, O(p log p). Los dos son estables: si dos llegan en el
+   mismo segundo, sube primero el que va antes en la lista.
+2. **Simular con una cola** (`subir_a_buses`): una lista donde se agrega al
+   final y un índice `frente` marca quién sigue. Cada bus sube hasta
+   `capacidad` personas del frente. Si la fila está vacía, saltamos al primer
+   bus que le sirve al siguiente pasajero (no se simulan buses vacíos). O(p).
+3. **Devolver en el orden original:** los que llegaron en el segundo v ocupan
+   puestos seguidos en la lista ordenada (desde `inicio[v]`), así que se
+   reparten en un solo recorrido. O(p + R).
 
 **Descartamos:** `fila.pop(0)`, que corre a todos los de la fila y deja todo
-en O(p²); y un montículo para ordenar por llegada, que da O(p log p).
+en O(p²); y ordenar siempre con merge sort, que da O(p log p).
 
 ## Panel de rendimiento (R11)
 
@@ -245,26 +243,26 @@ operación y calcula la **pendiente** de log(tiempo) contra log(n)
 esperada y explica las diferencias. En la red de prueba las rutas no se
 alargan con n (P y h fijos) y en R10 hay p = 5n pasajeros.
 
-Una corrida (microsegundos por llamada):
+Una corrida (microsegundos por llamada; varía un poco en cada computador):
 
 | Operación | Esperado | n=10.000 | n=80.000 | Pendiente |
 | --- | --- | --- | --- | --- |
-| R1 estado | O(1) | 0.3 | 0.3 | 0.03 |
-| R2 autocompletar | O(log n + k) | 2.6 | 3.5 | 0.15 |
-| R3 rango | O(log n + m) | 4.0 | 3.9 | -0.01 |
-| R4 proximo_bus | O(log h) | 1.9 | 1.9 | -0.02 |
-| R6 ranking | O((k + c) log(k + c)) | 23.3 | 21.7 | -0.04 |
-| R7 agregar y quitar | O(P + log n) | 7.7 | 7.6 | 0.03 |
-| R7 recorrido | O(P) | 0.3 | 0.4 | 0.12 |
-| R8 cerrar y reabrir | O(1) | 1.5 | 1.2 | -0.10 |
-| R9 deshacer y rehacer | O(P + log n) | 0.5 | 0.6 | 0.00 |
-| R10 simular_fila (p = 5n) | O(p) | 13 921 | 115 786 | 1.02 |
-| Carga `Red(carpeta)` | O(n log n + H) | 280 879 | 3 478 139 | 1.24 |
+| R1 estado | O(1) | 0.4 | 0.4 | ≈ 0 |
+| R2 autocompletar | O(log n + k) | 3.6 | 4.2 | ≈ 0 |
+| R3 rango | O(log n + m) | 4.2 | 4.3 | ≈ 0 |
+| R4 proximo_bus | O(log h) | 2.3 | 2.4 | ≈ 0 |
+| R6 ranking | O(k + c) | 3.9 | 4–7 | ≈ 0.2 |
+| R7 agregar y quitar | O(P) | 8.4 | 8–12 | ≈ 0.1 |
+| R7 recorrido | O(P) | 0.5 | 0.5–0.9 | ≈ 0.2 |
+| R8 cerrar y reabrir | O(1) | 1.5 | 1.2–2.6 | ≈ 0.1 |
+| R9 deshacer y rehacer | O(P) | 0.7 | 0.6–1.4 | ≈ 0.1 |
+| R10 simular_fila (p = 5n) | O(p) | 18 904 | 163 212 | 0.98 |
+| Carga `Red(carpeta)` | O(n log n + H) | 360 124 | 4 257 414 | 1.19 |
 
-Todas las operaciones salen planas (pendiente ≈ 0) menos R10, que es lineal
-porque p crece con n, y la carga. Las pequeñas subidas de R2 y R3 son el
-log n de la búsqueda binaria y la caché del procesador; los saltos entre una
-corrida y otra son ruido del computador.
+Todas las operaciones salen planas (pendiente cerca de 0) menos R10, que es
+lineal porque p crece con n, y la carga. Las diferencias pequeñas entre una
+corrida y otra son ruido del computador (otros programas usando el
+procesador en ese momento).
 
 ## Los datos
 
