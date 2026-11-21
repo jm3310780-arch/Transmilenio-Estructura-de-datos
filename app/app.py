@@ -2,16 +2,19 @@
 # todas las reglas del sistema están en motor/.
 #
 # Uso:
-#   pip install streamlit
-#   streamlit run app.py
-#
-# Streamlit vuelve a correr este archivo de arriba a abajo cada vez que el
-# usuario toca algo. Por eso la red se guarda en st.session_state: así no se
-# vuelve a cargar y no se pierden los cambios (cierres, ediciones, etc.).
+#   pip install -r requirements.txt   (desde la carpeta del proyecto)
+#   streamlit run app/app.py
 
+import os
 import random
+import sys
 
 import streamlit as st
+
+# La app vive en la carpeta app/ y el motor en motor/, al lado. Agregamos la
+# carpeta del proyecto a la ruta de Python para poder importar el motor.
+PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROYECTO)
 
 from motor import Red, simular_fila
 import rendimiento
@@ -20,7 +23,7 @@ st.set_page_config(page_title="Planeador TransMilenio")
 st.title("Planeador TransMilenio")
 
 if "red" not in st.session_state:
-    st.session_state.red = Red("datos")
+    st.session_state.red = Red(os.path.join(PROYECTO, "datos"))
 red = st.session_state.red
 
 pestanas = st.tabs(["Buscar", "Rango", "Próximo bus", "Viaje", "Ranking",
