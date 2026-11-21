@@ -8,13 +8,13 @@
 #   self.rutas_de   TablaHash  estación -> lista de rutas que paran ahí
 #   self.en_ruta    TablaHash  "ruta|estación" -> cuántas veces está en la ruta
 #   self.horarios   TablaHash  "ruta|estación" -> lista ordenada de horas "HH:MM"
-#   self.ranking_m  MonticuloIndexado  [estación, buses al día]
+#   self.buses      TablaHash  estación -> buses que paran ahí al día
+#   self.ranking_ordenado  lista de (estación, buses), de más a menos buses
 #   self.pila_deshacer / self.pila_rehacer   pilas de cambios (R9)
 
 import csv
 
-from .estructuras import (TablaHash, MonticuloIndexado, ordenar, buscar_desde,
-                          esta_ordenada, contar_valores)
+from .estructuras import TablaHash, ordenar, buscar_desde
 
 ABIERTA = "ABIERTA"
 CERRADA = "CERRADA"
@@ -170,18 +170,17 @@ class Red:
                 self.horarios.poner(clave, horas)
             horas.append(hora)
         for par in self.horarios.pares():
-            if not esta_ordenada(par[1]):
-                par[1] = ordenar(par[1])
+            par[1] = ordenar(par[1])
 
         # Buses al día de cada estación: suma de los horarios de las rutas
-        # que paran ahí. Se guardan en un montículo indexado (R6).
-        pares = []
+        # que paran ahí (para el ranking, R6).
+        self.buses = TablaHash(len(nombres))
         for nombre in nombres:
             total = 0
             for ruta in self.rutas_de.obtener(nombre):
                 total += self._buses_de(ruta, nombre)
-            pares.append([nombre, total])
-        self.ranking_m = MonticuloIndexado(pares, primero_en_ranking)
+            self.buses.poner(nombre, total)
+        self.ranking_ordenado = None  # None = hay que volver a ordenar
 
     def _buses_de(self, ruta, estacion):
         horas = self.horarios.obtener(ruta + "|" + estacion)
@@ -328,14 +327,27 @@ class Red:
         return mejor
 
     # -----------------------------------------------------------
-    # R6. Ranking de estaciones con más buses (Santiago Velásquez)
-    #     O((k + c) log(k + c))
+    # R6. Ranking de estaciones con más buses (Santiago Velásquez)   O(k + c)
     # -----------------------------------------------------------
     def ranking(self, k):
         """Las k estaciones abiertas con más buses al día: [(nombre, buses)]."""
+        resultado = []
         if k is None or k <= 0:
-            return []
-        return self.ranking_m.mejores(k, self._esta_abierta)
+            return resultado
+        # Guardamos TODAS las estaciones ordenadas (también las cerradas).
+        # Solo se vuelve a ordenar si una ruta cambió (R7): O(n log n).
+        # Cerrar o reabrir NO obliga a reordenar: las cerradas se saltan.
+        if self.ranking_ordenado is None:
+            lista = []
+            for nombre, buses in self.buses.pares():
+                lista.append((nombre, buses))
+            self.ranking_ordenado = ordenar(lista, primero_en_ranking)
+        for nombre, buses in self.ranking_ordenado:
+            if len(resultado) == k:
+                break
+            if self._esta_abierta(nombre):
+                resultado.append((nombre, buses))
+        return resultado
 
     # -----------------------------------------------------------
     # R7. Editar rutas (Santiago Wagner)   O(P)
@@ -415,8 +427,8 @@ class Red:
 
     def _sumar_buses(self, estacion, cuantos):
         if cuantos != 0:
-            actual = self.ranking_m.valor(estacion)
-            self.ranking_m.cambiar(estacion, actual + cuantos)  # O(log n)
+            self.buses.poner(estacion, self.buses.obtener(estacion) + cuantos)
+            self.ranking_ordenado = None  # el ranking se vuelve a ordenar
 
     # -----------------------------------------------------------
     # R8. Cerrar y reabrir (Santiago Wagner)   O(1)
@@ -483,64 +495,105 @@ class Red:
 
 
 # ---------------------------------------------------------------
-# R10. Fila de abordaje (Santiago Wagner)
+# R10. Fila de abordaje (Santiago Wagner)   O(p + R)
 # ---------------------------------------------------------------
 # Los buses salen en los segundos frecuencia, 2*frecuencia, 3*frecuencia, ...
-# (el primero sale en el segundo "frecuencia", no en el 0). Quien llega justo cuando sale un bus alcanza
-# a subir. Si el bus se llena, los demás esperan el siguiente, en orden de
-# llegada (si llegan en el mismo segundo, primero el que va antes en la lista).
-
+# Quien llega justo cuando sale un bus alcanza a subir. Si el bus se llena,
+# los demás esperan el siguiente, en orden de llegada (si llegan en el mismo
+# segundo, primero el que va antes en la lista).
 
 def simular_fila(llegadas, frecuencia, capacidad):
     """Segundo en que sale el bus de cada persona, en el orden de 'llegadas'.
 
     Ejemplo: simular_fila([30, 5, 5, 70], 60, 2) -> [120, 60, 60, 120]
-    O(p + R) con segundos enteros (R = segundos entre la primera y la última
-    llegada); O(p log p) si hay que usar merge sort.
     """
     p = len(llegadas)
+    salida = [None] * p
     if p == 0 or frecuencia <= 0 or capacidad <= 0:
-        return [None] * p
+        return salida
 
-    # 1. Ordenar las llegadas. t = segundos de llegada en orden.
-    conteo = None
-    orden = None
-    if esta_ordenada(llegadas):
-        t = llegadas                                    # O(p)
-    else:
-        contados = contar_valores(llegadas)
-        if contados is not None:                        # counting sort O(p + R)
-            menor_v, conteo = contados
-            t = []
-            for v in range(len(conteo)):
-                if conteo[v] > 0:
-                    t += [menor_v + v] * conteo[v]
-        else:                                           # merge sort O(p log p)
-            pares = [None] * p
-            for i in range(p):
-                pares[i] = (llegadas[i], i)  # el índice desempata: estable
-            pares = ordenar(pares)
-            t = [0] * p
-            orden = [0] * p
-            for i in range(p):
-                t[i] = pares[i][0]
-                orden[i] = pares[i][1]
+    conteo = contar_por_segundo(llegadas)
+    if conteo is not None:
+        # --- Camino normal: los segundos son enteros. Counting sort, O(p + R).
+        primero = conteo[0]
+        cuantos = conteo[1]          # cuantos[v] = personas que llegan en primero + v
+        # 1. Lista de llegadas ya en orden, sin comparar: se lee el conteo.
+        tiempos = []
+        for v in range(len(cuantos)):
+            for vez in range(cuantos[v]):
+                tiempos.append(primero + v)
+        # 2. Simular la fila con las llegadas en orden.
+        sale = subir_a_buses(tiempos, frecuencia, capacidad)
+        # 3. Devolver en el orden original. Los que llegaron en el segundo v
+        #    ocupan, en orden, los puestos inicio[v], inicio[v] + 1, ...
+        inicio = []
+        acumulado = 0
+        for v in range(len(cuantos)):
+            inicio.append(acumulado)
+            acumulado += cuantos[v]
+        for i in range(p):
+            v = llegadas[i] - primero
+            salida[i] = sale[inicio[v]]
+            inicio[v] += 1
+        return salida
 
-    # 2. Simular. La fila es una cola: una lista donde se agrega al final y
-    #    "frente" marca quién sigue. (fila.pop(0) correría a todos: O(p).)
-    #    sale[i] = segundo en que sale el bus de la i-ésima persona en llegar.
+    # --- Camino de respaldo (segundos con decimales): merge sort, O(p log p).
+    def llega_antes(a, b):
+        return llegadas[a] < llegadas[b]
+    orden = ordenar(list(range(p)), llega_antes)   # posiciones en orden de llegada
+    tiempos = []
+    for i in orden:
+        tiempos.append(llegadas[i])
+    sale = subir_a_buses(tiempos, frecuencia, capacidad)
+    for j in range(p):
+        salida[orden[j]] = sale[j]
+    return salida
+
+
+def contar_por_segundo(llegadas):
+    """Cuenta cuántas personas llegan en cada segundo.
+
+    Devuelve (primero, cuantos): cuantos[v] = personas que llegan en el
+    segundo primero + v. Devuelve None si hay segundos con decimales o si el
+    rango es demasiado grande (ahí conviene más merge sort).
+    """
+    primero = llegadas[0]
+    ultimo = llegadas[0]
+    for x in llegadas:
+        if type(x) is not int:
+            return None
+        if x < primero:
+            primero = x
+        if x > ultimo:
+            ultimo = x
+    if ultimo - primero > 4 * len(llegadas) + 100000:
+        return None
+    cuantos = [0] * (ultimo - primero + 1)
+    for x in llegadas:
+        cuantos[x - primero] += 1
+    return (primero, cuantos)
+
+
+def subir_a_buses(tiempos, frecuencia, capacidad):
+    """tiempos: llegadas YA ORDENADAS. Devuelve el bus de cada una. O(p).
+
+    La fila es una COLA: una lista a la que se agrega al final, y "frente"
+    dice quién es el primero. (No usamos fila.pop(0) porque corre a todos
+    los de la fila cada vez y con muchos pasajeros sería O(p^2).)
+    """
+    p = len(tiempos)
     sale = [0] * p
     fila = []
     frente = 0
-    siguiente = 0  # siguiente persona (en orden de llegada) que no ha llegado
-    bus = frecuencia  # el primer bus sale en el segundo 'frecuencia'
+    siguiente = 0           # siguiente persona que todavía no ha llegado
+    bus = frecuencia        # el primer bus sale en el segundo "frecuencia"
     while siguiente < p or frente < len(fila):
         # Si no hay nadie esperando, saltamos al primer bus que le sirve
-        # al siguiente que llega (no simulamos buses vacíos).
-        if frente == len(fila) and t[siguiente] > bus:
-            bus = -(-t[siguiente] // frecuencia) * frecuencia  # múltiplo >= t
-        # Entran a la fila los que llegan antes de que salga el bus.
-        while siguiente < p and t[siguiente] <= bus:
+        # al siguiente que llega (no tiene sentido simular buses vacíos).
+        if frente == len(fila) and tiempos[siguiente] > bus:
+            bus = -(-tiempos[siguiente] // frecuencia) * frecuencia  # múltiplo >= llegada
+        # Entran a la fila todos los que llegan antes de que salga el bus.
+        while siguiente < p and tiempos[siguiente] <= bus:
             fila.append(siguiente)
             siguiente += 1
         # Suben en orden de llegada hasta llenar el bus.
@@ -550,24 +603,4 @@ def simular_fila(llegadas, frecuencia, capacidad):
             frente += 1
             subidos += 1
         bus += frecuencia
-
-    # 3. Devolver en el mismo orden de 'llegadas'.
-    if conteo is None and orden is None:
-        return sale                       # ya venían en orden
-    salida = [None] * p
-    if orden is not None:
-        for i in range(p):
-            salida[orden[i]] = sale[i]
-        return salida
-    # Con counting sort: los que llegaron en el segundo v ocupan, en orden de
-    # llegada, las posiciones inicio[v], inicio[v] + 1, ... de "sale".
-    inicio = [0] * len(conteo)
-    acumulado = 0
-    for v in range(len(conteo)):
-        inicio[v] = acumulado
-        acumulado += conteo[v]
-    for i in range(p):
-        v = llegadas[i] - menor_v
-        salida[i] = sale[inicio[v]]
-        inicio[v] += 1
-    return salida
+    return sale
