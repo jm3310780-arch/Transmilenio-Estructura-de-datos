@@ -3,9 +3,9 @@
 # Dentro de motor/ el enunciado NO deja usar dict, set, sorted, .sort(),
 # min, max, "x in lista", .index(), .count(), bisect, heapq, collections
 # ni functools. Por eso aquí están:
-
 #   1. TablaHash          -> reemplaza a dict
 #   2. ordenar            -> merge sort, reemplaza a sorted
+#      contar_valores     -> counting sort para enteros en un rango chico
 #   3. buscar_desde       -> búsqueda binaria
 
 
@@ -139,6 +139,37 @@ def _mezclar(origen, destino, inicio, medio, fin, va_antes):
         destino[k] = origen[j]
         j += 1
         k += 1
+
+
+# ---------------------------------------------------------------
+# 2b. Conteo de valores (base del counting sort)
+# ---------------------------------------------------------------
+# Para claves enteras en un rango pequeño (por ejemplo, segundos del día):
+# conteo[v] = cuántas claves valen menor + v. Con esos conteos se arma la
+# lista ordenada sin comparar nada: O(p + R), R = mayor - menor + 1.
+# Devuelve (menor, conteo), o None si las claves no son enteras o el rango
+# es tan grande que no conviene (ahí se usa merge sort).
+
+def contar_valores(claves):
+    p = len(claves)
+    if p == 0:
+        return None
+    menor_v = claves[0]
+    mayor_v = claves[0]
+    for x in claves:
+        if type(x) is not int:
+            return None
+        if x < menor_v:
+            menor_v = x
+        elif x > mayor_v:
+            mayor_v = x
+    rango = mayor_v - menor_v + 1
+    if rango > 4 * p + 100000:
+        return None
+    conteo = [0] * rango
+    for x in claves:
+        conteo[x - menor_v] += 1
+    return (menor_v, conteo)
 
 
 # ---------------------------------------------------------------
