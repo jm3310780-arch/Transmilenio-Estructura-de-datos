@@ -7,6 +7,9 @@
 #   2. ordenar            -> merge sort, reemplaza a sorted
 #      contar_valores     -> counting sort para enteros en un rango chico
 #   3. buscar_desde       -> búsqueda binaria
+#   4. Monticulo          -> montículo binario (cola de prioridad)
+#   5. MonticuloIndexado  -> montículo que deja cambiar la prioridad de una
+#                            clave en O(log n) (lo usa el ranking, R6)
 
 
 # ---------------------------------------------------------------
@@ -188,3 +191,157 @@ def buscar_desde(lista, x):
         else:
             fin = medio
     return inicio
+
+
+# ---------------------------------------------------------------
+# 4. Montículo binario
+# ---------------------------------------------------------------
+# Árbol completo guardado en una lista: los hijos de la posición i están en
+# 2i+1 y 2i+2. El que "va_antes" de todos queda en la posición 0.
+# agregar y sacar: O(log n).
+
+class Monticulo:
+    def __init__(self, va_antes):
+        self.datos = []
+        self.va_antes = va_antes
+
+    def __len__(self):
+        return len(self.datos)
+
+    def agregar(self, x):
+        datos = self.datos
+        datos.append(x)
+        i = len(datos) - 1
+        while i > 0:
+            padre = (i - 1) // 2
+            if not self.va_antes(datos[i], datos[padre]):
+                break
+            datos[i], datos[padre] = datos[padre], datos[i]
+            i = padre
+
+    def sacar(self):
+        datos = self.datos
+        primero = datos[0]
+        ultimo = datos.pop()
+        if len(datos) > 0:
+            datos[0] = ultimo
+            i = 0
+            n = len(datos)
+            while True:
+                mejor = i
+                izq = 2 * i + 1
+                der = izq + 1
+                if izq < n and self.va_antes(datos[izq], datos[mejor]):
+                    mejor = izq
+                if der < n and self.va_antes(datos[der], datos[mejor]):
+                    mejor = der
+                if mejor == i:
+                    break
+                datos[i], datos[mejor] = datos[mejor], datos[i]
+                i = mejor
+        return primero
+
+
+# ---------------------------------------------------------------
+# 5. Montículo indexado
+# ---------------------------------------------------------------
+# Guarda pares [clave, valor]. Además tiene una TablaHash clave -> posición
+# en la lista, para poder encontrar una clave en O(1) y cambiarle el valor
+# en O(log n) (se sube o se baja hasta su lugar).
+#
+# mejores(k, sirve) devuelve los k mejores pares que cumplen sirve(clave)
+# SIN sacarlos del montículo: recorre el árbol desde la raíz usando un
+# montículo auxiliar con los candidatos (las "fronteras"). Cada par
+# visitado mete a lo sumo 2 hijos, así que cuesta O((k + c) log(k + c)),
+# donde c es cuántos pares que no sirven se saltaron por el camino.
+
+class MonticuloIndexado:
+    def __init__(self, pares, va_antes):
+        """pares: lista de [clave, valor]. Se arma en O(n) (heapify)."""
+        self.datos = pares
+        self.va_antes = va_antes
+        n = len(pares)
+        i = n // 2 - 1
+        while i >= 0:
+            self._bajar_sin_indice(i)
+            i -= 1
+        self.posicion = TablaHash(n)
+        for i in range(n):
+            self.posicion.poner(pares[i][0], i)
+
+    def _bajar_sin_indice(self, i):
+        datos = self.datos
+        n = len(datos)
+        while True:
+            mejor = i
+            izq = 2 * i + 1
+            der = izq + 1
+            if izq < n and self.va_antes(datos[izq], datos[mejor]):
+                mejor = izq
+            if der < n and self.va_antes(datos[der], datos[mejor]):
+                mejor = der
+            if mejor == i:
+                return
+            datos[i], datos[mejor] = datos[mejor], datos[i]
+            i = mejor
+
+    def _cambiar_lugar(self, i, j):
+        datos = self.datos
+        datos[i], datos[j] = datos[j], datos[i]
+        self.posicion.poner(datos[i][0], i)
+        self.posicion.poner(datos[j][0], j)
+
+    def valor(self, clave):
+        i = self.posicion.obtener(clave)
+        if i is None:
+            return None
+        return self.datos[i][1]
+
+    def cambiar(self, clave, valor):
+        """Le pone un valor nuevo a la clave y la deja en su lugar. O(log n)."""
+        i = self.posicion.obtener(clave)
+        if i is None:
+            return
+        datos = self.datos
+        datos[i][1] = valor
+        # Subir mientras vaya antes que su padre.
+        while i > 0:
+            padre = (i - 1) // 2
+            if not self.va_antes(datos[i], datos[padre]):
+                break
+            self._cambiar_lugar(i, padre)
+            i = padre
+        # Bajar mientras un hijo vaya antes que él.
+        n = len(datos)
+        while True:
+            mejor = i
+            izq = 2 * i + 1
+            der = izq + 1
+            if izq < n and self.va_antes(datos[izq], datos[mejor]):
+                mejor = izq
+            if der < n and self.va_antes(datos[der], datos[mejor]):
+                mejor = der
+            if mejor == i:
+                return
+            self._cambiar_lugar(i, mejor)
+            i = mejor
+
+    def mejores(self, k, sirve):
+        """Los k mejores pares (clave, valor) cuya clave cumple sirve(clave)."""
+        datos = self.datos
+        resultado = []
+        if k <= 0 or len(datos) == 0:
+            return resultado
+        va_antes = self.va_antes
+        frontera = Monticulo(lambda a, b: va_antes(datos[a], datos[b]))
+        frontera.agregar(0)
+        n = len(datos)
+        while len(frontera) > 0 and len(resultado) < k:
+            i = frontera.sacar()
+            if sirve(datos[i][0]):
+                resultado.append((datos[i][0], datos[i][1]))
+            if 2 * i + 1 < n:
+                frontera.agregar(2 * i + 1)
+            if 2 * i + 2 < n:
+                frontera.agregar(2 * i + 2)
+        return resultado
