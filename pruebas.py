@@ -36,6 +36,8 @@ assert red.estado("Z") == "NO EXISTE"
 assert red.autocompletar("CA", 10) == ["CALLE 26", "CALLE 45", "CALLE 80", "CAN"]
 assert red.autocompletar("CA", 2) == ["CALLE 26", "CALLE 45"]
 assert red.autocompletar("X", 3) == []
+assert red.autocompletar("CALLE ", 10) == ["CALLE 26", "CALLE 45", "CALLE 80"]  # el espacio cuenta
+assert red.autocompletar("CA", 0) == []
 
 # R3
 assert red.rango("CALLE 26", "CALLE 80") == ["CALLE 26", "CALLE 45", "CALLE 80"]
