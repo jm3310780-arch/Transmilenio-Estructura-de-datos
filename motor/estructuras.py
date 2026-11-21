@@ -1,4 +1,9 @@
-#   aquí están:
+# Estructuras y algoritmos hechos por nosotros.
+#
+# Dentro de motor/ el enunciado NO deja usar dict, set, sorted, .sort(),
+# min, max, "x in lista", .index(), .count(), bisect, heapq, collections
+# ni functools. Por eso aquí están:
+
 #   1. TablaHash          -> reemplaza a dict
 #   2. ordenar            -> merge sort, reemplaza a sorted
 #   3. buscar_desde       -> búsqueda binaria
